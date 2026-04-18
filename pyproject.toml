@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cyphera-kmip"
+version = "0.1.0"
+description = "KMIP client for Python — connect to any KMIP-compliant key management server (Thales, IBM SKLM, Entrust, Fortanix, HashiCorp Vault)."
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.10"
+authors = [
+    { name = "Horizon Digital Engineering LLC" },
+]
+keywords = [
+    "kmip",
+    "key-management",
+    "kms",
+    "thales",
+    "ciphertrust",
+    "hsm",
+    "encryption-keys",
+    "mTLS",
+    "TTLV",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Security",
+]
+
+[project.urls]
+Homepage = "https://github.com/cyphera-labs/kmip-python"
+Repository = "https://github.com/cyphera-labs/kmip-python"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
