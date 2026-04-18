@@ -73,7 +73,7 @@ class TestOperations:
         assert Operation.Destroy == 0x00000014
 
     def test_check(self):
-        assert Operation.Check == 0x0000001C
+        assert Operation.Check == 0x00000009
 
     def test_no_duplicate_values(self):
         values = [
