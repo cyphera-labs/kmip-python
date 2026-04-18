@@ -10,7 +10,7 @@ readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.10"
 authors = [
-    { name = "Horizon Digital Engineering LLC" },
+    { name = "Leslie Gutschow", email = "leslie.gutschow@horizondigital.dev" },
 ]
 keywords = [
     "kmip",
@@ -36,7 +36,7 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/cyphera-labs/kmip-python"
+Homepage = "https://cyphera.io"
 Repository = "https://github.com/cyphera-labs/kmip-python"
 
 [tool.setuptools.packages.find]
