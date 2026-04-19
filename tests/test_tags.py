@@ -208,20 +208,26 @@ class TestAlgorithms:
     def test_hmac_sha1(self):
         assert Algorithm.HMACSHA1 == 0x00000007
 
+    def test_hmac_sha224(self):
+        assert Algorithm.HMACSHA224 == 0x00000008
+
     def test_hmac_sha256(self):
-        assert Algorithm.HMACSHA256 == 0x00000008
+        assert Algorithm.HMACSHA256 == 0x00000009
 
     def test_hmac_sha384(self):
-        assert Algorithm.HMACSHA384 == 0x00000009
+        assert Algorithm.HMACSHA384 == 0x0000000A
 
     def test_hmac_sha512(self):
-        assert Algorithm.HMACSHA512 == 0x0000000A
+        assert Algorithm.HMACSHA512 == 0x0000000B
+
+    def test_hmac_md5(self):
+        assert Algorithm.HMACMD5 == 0x0000000C
 
     def test_no_duplicate_values(self):
         values = [
             Algorithm.DES, Algorithm.TripleDES, Algorithm.AES, Algorithm.RSA,
-            Algorithm.DSA, Algorithm.ECDSA, Algorithm.HMACSHA1,
-            Algorithm.HMACSHA256, Algorithm.HMACSHA384, Algorithm.HMACSHA512,
+            Algorithm.DSA, Algorithm.ECDSA, Algorithm.HMACSHA1, Algorithm.HMACSHA224,
+            Algorithm.HMACSHA256, Algorithm.HMACSHA384, Algorithm.HMACSHA512, Algorithm.HMACMD5,
         ]
         assert len(set(values)) == len(values)
 
@@ -302,8 +308,14 @@ class TestUsageMask:
     def test_export(self):
         assert UsageMask.Export == 0x00000040
 
+    def test_mac_generate(self):
+        assert UsageMask.MACGenerate == 0x00000080
+
+    def test_mac_verify(self):
+        assert UsageMask.MACVerify == 0x00000100
+
     def test_derive_key(self):
-        assert UsageMask.DeriveKey == 0x00000100
+        assert UsageMask.DeriveKey == 0x00000200
 
     def test_key_agreement(self):
         assert UsageMask.KeyAgreement == 0x00000800
@@ -315,7 +327,8 @@ class TestUsageMask:
         values = [
             UsageMask.Sign, UsageMask.Verify, UsageMask.Encrypt,
             UsageMask.Decrypt, UsageMask.WrapKey, UsageMask.UnwrapKey,
-            UsageMask.Export, UsageMask.DeriveKey, UsageMask.KeyAgreement,
+            UsageMask.Export, UsageMask.MACGenerate, UsageMask.MACVerify,
+            UsageMask.DeriveKey, UsageMask.KeyAgreement,
         ]
         combined = 0
         for v in values:

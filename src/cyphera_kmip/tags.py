@@ -157,9 +157,11 @@ class Algorithm:
     DSA = 0x00000005
     ECDSA = 0x00000006
     HMACSHA1 = 0x00000007
-    HMACSHA256 = 0x00000008
-    HMACSHA384 = 0x00000009
-    HMACSHA512 = 0x0000000A
+    HMACSHA224 = 0x00000008
+    HMACSHA256 = 0x00000009
+    HMACSHA384 = 0x0000000A
+    HMACSHA512 = 0x0000000B
+    HMACMD5 = 0x0000000C
 
 
 class NameType:
@@ -175,5 +177,7 @@ class UsageMask:
     WrapKey = 0x00000010
     UnwrapKey = 0x00000020
     Export = 0x00000040
-    DeriveKey = 0x00000100
+    MACGenerate = 0x00000080
+    MACVerify = 0x00000100
+    DeriveKey = 0x00000200
     KeyAgreement = 0x00000800
