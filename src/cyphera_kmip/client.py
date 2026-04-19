@@ -99,9 +99,13 @@ class KmipClient:
         port: KMIP server port (default 5696).
         client_cert: Path to client certificate PEM file.
         client_key: Path to client private key PEM file.
-        ca_cert: Path to CA certificate PEM file (optional).
+        ca_cert: Path to CA certificate PEM file (optional, uses system roots if empty).
         timeout: Connection timeout in seconds (default 10).
+        insecure_skip_verify: DANGER: disables server certificate verification (default False).
     """
+
+    # Maximum KMIP response size (16MB).
+    MAX_RESPONSE_SIZE = 16 * 1024 * 1024
 
     def __init__(
         self,
@@ -111,11 +115,13 @@ class KmipClient:
         port: int = 5696,
         ca_cert: str = None,
         timeout: int = 10,
+        insecure_skip_verify: bool = False,
     ):
         self.host = host
         self.port = port
         self.timeout = timeout
         self._sock = None
+        self._insecure_skip_verify = insecure_skip_verify
 
         self._client_cert = client_cert
         self._client_key = client_key
@@ -343,12 +349,34 @@ class KmipClient:
     def _send(self, request: bytes) -> bytes:
         """Send a KMIP request and receive the response."""
         sock = self._connect()
-        sock.sendall(request)
+        try:
+            sock.sendall(request)
+        except OSError:
+            self._sock = None  # Mark connection as stale.
+            raise
 
         # Read TTLV header (8 bytes) to determine total length
-        header = self._recv_exact(sock, 8)
+        try:
+            header = self._recv_exact(sock, 8)
+        except (OSError, ConnectionError):
+            self._sock = None  # Mark connection as stale.
+            raise
+
         value_length = struct.unpack(">I", header[4:8])[0]
-        body = self._recv_exact(sock, value_length)
+
+        # Validate response size before allocating.
+        if value_length > self.MAX_RESPONSE_SIZE:
+            self._sock = None  # Mark connection as stale.
+            raise RuntimeError(
+                f"KMIP: response too large ({value_length} bytes, max {self.MAX_RESPONSE_SIZE})"
+            )
+
+        try:
+            body = self._recv_exact(sock, value_length)
+        except (OSError, ConnectionError):
+            self._sock = None  # Mark connection as stale.
+            raise
+
         return header + body
 
     def _recv_exact(self, sock, n: int) -> bytes:
@@ -366,14 +394,19 @@ class KmipClient:
         if self._sock is not None:
             return self._sock
 
-        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        # Use ssl.create_default_context() which verifies certificates by default
+        # and loads system CA certificates when no CA cert is provided.
+        ctx = ssl.create_default_context()
         ctx.load_cert_chain(
             certfile=self._client_cert,
             keyfile=self._client_key,
         )
         if self._ca_cert:
             ctx.load_verify_locations(self._ca_cert)
-        else:
+        # When no CA cert is provided, system roots are used by default.
+
+        # Only disable verification if explicitly requested.
+        if self._insecure_skip_verify:
             ctx.check_hostname = False
             ctx.verify_mode = ssl.CERT_NONE
 

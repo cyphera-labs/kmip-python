@@ -101,17 +101,25 @@ def encode_date_time(tag: int, value: int) -> bytes:
     return encode_ttlv(tag, Type.DateTime, struct.pack(">q", value))
 
 
-def decode_ttlv(buf: bytes, offset: int = 0) -> dict:
+# Maximum nesting depth for TTLV structures.
+_MAX_DECODE_DEPTH = 32
+
+
+def decode_ttlv(buf: bytes, offset: int = 0, _depth: int = 0) -> dict:
     """
     Decode a TTLV buffer into a parsed tree.
 
     Args:
         buf: Raw TTLV bytes.
         offset: Starting offset in the buffer.
+        _depth: Internal recursion depth counter (do not set manually).
 
     Returns:
         Dict with keys: tag, type, value, length, total_length.
     """
+    if _depth > _MAX_DECODE_DEPTH:
+        raise ValueError("TTLV: maximum nesting depth exceeded")
+
     if len(buf) - offset < 8:
         raise ValueError("TTLV buffer too short for header")
 
@@ -123,12 +131,19 @@ def decode_ttlv(buf: bytes, offset: int = 0) -> dict:
 
     value_start = offset + 8
 
+    # Bounds check: ensure declared length fits within buffer.
+    if value_start + padded > len(buf):
+        raise ValueError(
+            f"TTLV: declared length {length} exceeds buffer "
+            f"(have {len(buf) - value_start} bytes)"
+        )
+
     if type_ == Type.Structure:
         children = []
         pos = value_start
         end = value_start + length
         while pos < end:
-            child = decode_ttlv(buf, pos)
+            child = decode_ttlv(buf, pos, _depth + 1)
             children.append(child)
             pos += child["total_length"]
         value = children
