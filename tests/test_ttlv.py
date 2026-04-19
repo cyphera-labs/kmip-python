@@ -372,3 +372,61 @@ class TestUnicode:
         encoded = encode_text_string(0x420055, long_str)
         decoded = decode_ttlv(encoded)
         assert decoded["value"] == long_str
+
+
+# ---------------------------------------------------------------------------
+# Security hardening tests
+# ---------------------------------------------------------------------------
+
+
+class TestSecurityHardening:
+    def test_declared_length_exceeds_buffer(self):
+        # Header claiming 1000 bytes of value, but only 10 bytes provided
+        buf = bytearray(18)  # 8 header + 10 body
+        buf[0] = 0x42; buf[1] = 0x00; buf[2] = 0x01  # tag = 0x420001
+        buf[3] = 0x07  # type = TextString
+        struct.pack_into(">I", buf, 4, 1000)  # length = 1000
+        with pytest.raises(ValueError, match="exceeds buffer"):
+            decode_ttlv(buf)
+
+    def test_declared_length_exactly_fits(self):
+        encoded = encode_integer(0x420001, 42)
+        decoded = decode_ttlv(encoded)
+        assert decoded["value"] == 42
+
+    def test_zero_length_buffer(self):
+        with pytest.raises(ValueError, match="too short"):
+            decode_ttlv(b"")
+
+    def test_depth_limit_exceeded(self):
+        # Build 33 levels of nesting
+        inner = encode_integer(0x420001, 42)
+        for _ in range(33):
+            inner = encode_structure(0x420001, [inner])
+        with pytest.raises(ValueError, match="depth"):
+            decode_ttlv(inner)
+
+    def test_depth_at_limit_succeeds(self):
+        # Build 31 wrapping levels (root is depth 0, innermost is depth 31)
+        inner = encode_integer(0x420001, 42)
+        for _ in range(31):
+            inner = encode_structure(0x420001, [inner])
+        decoded = decode_ttlv(inner)
+        assert decoded["type"] == Type.Structure
+
+    def test_truncated_header(self):
+        buf = bytes([0x42, 0x00, 0x01, 0x02])
+        with pytest.raises(ValueError, match="too short"):
+            decode_ttlv(buf)
+
+    def test_integer_with_wrong_length(self):
+        # Header: tag=0x420001, type=Integer(0x02), length=3 (should be 4)
+        buf = bytearray(16)
+        buf[0] = 0x42; buf[1] = 0x00; buf[2] = 0x01
+        buf[3] = 0x02  # type = Integer
+        struct.pack_into(">I", buf, 4, 3)  # length = 3 (invalid)
+        # Should either raise or handle safely — must not crash
+        try:
+            decode_ttlv(bytes(buf))
+        except Exception:
+            pass  # any exception is acceptable
