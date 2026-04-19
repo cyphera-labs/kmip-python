@@ -2,7 +2,7 @@
 cyphera-kmip -- KMIP client for Python.
 """
 
-from .client import KmipClient
+from .client import KmipClient, resolve_algorithm
 from .tags import Tag, Operation, ObjectType, ResultStatus, KeyFormatType, Algorithm, NameType, UsageMask
 from .ttlv import (
     Type,
@@ -19,9 +19,12 @@ from .ttlv import (
     find_child,
     find_children,
 )
+from .operations import KmipError
 
 __all__ = [
     "KmipClient",
+    "KmipError",
+    "resolve_algorithm",
     "Tag",
     "Operation",
     "ObjectType",

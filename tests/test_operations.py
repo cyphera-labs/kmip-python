@@ -1,14 +1,51 @@
-"""Operations request/response tests — ported from kmip-node."""
+"""Operations request/response tests -- full 27-operation set."""
 
 import pytest
 from cyphera_kmip.operations import (
     build_locate_request,
     build_get_request,
     build_create_request,
+    build_activate_request,
+    build_destroy_request,
+    build_create_key_pair_request,
+    build_register_request,
+    build_re_key_request,
+    build_derive_key_request,
+    build_check_request,
+    build_get_attributes_request,
+    build_get_attribute_list_request,
+    build_add_attribute_request,
+    build_modify_attribute_request,
+    build_delete_attribute_request,
+    build_obtain_lease_request,
+    build_revoke_request,
+    build_archive_request,
+    build_recover_request,
+    build_query_request,
+    build_poll_request,
+    build_discover_versions_request,
+    build_encrypt_request,
+    build_decrypt_request,
+    build_sign_request,
+    build_signature_verify_request,
+    build_mac_request,
     parse_response,
     parse_locate_payload,
     parse_get_payload,
     parse_create_payload,
+    parse_check_payload,
+    parse_re_key_payload,
+    parse_encrypt_payload,
+    parse_decrypt_payload,
+    parse_sign_payload,
+    parse_signature_verify_payload,
+    parse_mac_payload,
+    parse_query_payload,
+    parse_discover_versions_payload,
+    parse_derive_key_payload,
+    parse_create_key_pair_payload,
+    parse_obtain_lease_payload,
+    KmipError,
     PROTOCOL_MAJOR,
     PROTOCOL_MINOR,
 )
@@ -64,7 +101,7 @@ def _build_mock_response(operation, status, payload_children=None, extra_batch_c
 
 
 # ---------------------------------------------------------------------------
-# Request building
+# Original request building tests
 # ---------------------------------------------------------------------------
 
 
@@ -221,6 +258,296 @@ class TestRequestBuilding:
 
 
 # ---------------------------------------------------------------------------
+# New operation request builders
+# ---------------------------------------------------------------------------
+
+
+def _decode_request(request_bytes):
+    """Decode a request and return (operation_value, payload_decoded)."""
+    decoded = decode_ttlv(request_bytes)
+    batch = find_child(decoded, Tag.BatchItem)
+    op = find_child(batch, Tag.Operation)
+    payload = find_child(batch, Tag.RequestPayload)
+    return op["value"], payload
+
+
+class TestActivateDestroyBuilders:
+    def test_activate_has_correct_operation(self):
+        op, payload = _decode_request(build_activate_request("uid-1"))
+        assert op == Operation.Activate
+
+    def test_activate_contains_uid(self):
+        op, payload = _decode_request(build_activate_request("uid-1"))
+        uid = find_child(payload, Tag.UniqueIdentifier)
+        assert uid["value"] == "uid-1"
+
+    def test_destroy_has_correct_operation(self):
+        op, payload = _decode_request(build_destroy_request("uid-2"))
+        assert op == Operation.Destroy
+
+    def test_destroy_contains_uid(self):
+        op, payload = _decode_request(build_destroy_request("uid-2"))
+        uid = find_child(payload, Tag.UniqueIdentifier)
+        assert uid["value"] == "uid-2"
+
+
+class TestCreateKeyPairBuilder:
+    def test_has_correct_operation(self):
+        op, payload = _decode_request(
+            build_create_key_pair_request("kp-1", Algorithm.RSA, 2048)
+        )
+        assert op == Operation.CreateKeyPair
+
+    def test_contains_algorithm(self):
+        op, payload = _decode_request(
+            build_create_key_pair_request("kp-1", Algorithm.RSA, 2048)
+        )
+        tmpl = find_child(payload, Tag.TemplateAttribute)
+        attrs = find_children(tmpl, Tag.Attribute)
+        algo_attr = next(
+            a for a in attrs
+            if find_child(a, Tag.AttributeName)["value"] == "Cryptographic Algorithm"
+        )
+        assert find_child(algo_attr, Tag.AttributeValue)["value"] == Algorithm.RSA
+
+    def test_contains_sign_verify_usage_mask(self):
+        op, payload = _decode_request(
+            build_create_key_pair_request("kp-1", Algorithm.RSA, 2048)
+        )
+        tmpl = find_child(payload, Tag.TemplateAttribute)
+        attrs = find_children(tmpl, Tag.Attribute)
+        usage_attr = next(
+            a for a in attrs
+            if find_child(a, Tag.AttributeName)["value"] == "Cryptographic Usage Mask"
+        )
+        assert find_child(usage_attr, Tag.AttributeValue)["value"] == (
+            UsageMask.Sign | UsageMask.Verify
+        )
+
+
+class TestRegisterBuilder:
+    def test_has_correct_operation(self):
+        material = bytes(32)
+        op, payload = _decode_request(
+            build_register_request(ObjectType.SymmetricKey, material, "reg-key", Algorithm.AES, 256)
+        )
+        assert op == Operation.Register
+
+    def test_contains_object_type(self):
+        material = bytes(32)
+        op, payload = _decode_request(
+            build_register_request(ObjectType.SymmetricKey, material, "reg-key", Algorithm.AES, 256)
+        )
+        obj_type = find_child(payload, Tag.ObjectType)
+        assert obj_type["value"] == ObjectType.SymmetricKey
+
+    def test_contains_key_material(self):
+        material = bytes.fromhex("aabbccdd" * 8)
+        op, payload = _decode_request(
+            build_register_request(ObjectType.SymmetricKey, material, "reg-key", Algorithm.AES, 256)
+        )
+        sym_key = find_child(payload, Tag.SymmetricKey)
+        key_block = find_child(sym_key, Tag.KeyBlock)
+        key_value = find_child(key_block, Tag.KeyValue)
+        km = find_child(key_value, Tag.KeyMaterial)
+        assert km["value"] == material
+
+    def test_contains_name_when_provided(self):
+        material = bytes(32)
+        op, payload = _decode_request(
+            build_register_request(ObjectType.SymmetricKey, material, "my-reg", Algorithm.AES, 256)
+        )
+        tmpl = find_child(payload, Tag.TemplateAttribute)
+        assert tmpl is not None
+
+    def test_no_template_when_name_empty(self):
+        material = bytes(32)
+        op, payload = _decode_request(
+            build_register_request(ObjectType.SymmetricKey, material, "", Algorithm.AES, 256)
+        )
+        tmpl = find_child(payload, Tag.TemplateAttribute)
+        assert tmpl is None
+
+
+class TestReKeyBuilder:
+    def test_has_correct_operation(self):
+        op, payload = _decode_request(build_re_key_request("uid-rk"))
+        assert op == Operation.ReKey
+
+    def test_contains_uid(self):
+        op, payload = _decode_request(build_re_key_request("uid-rk"))
+        uid = find_child(payload, Tag.UniqueIdentifier)
+        assert uid["value"] == "uid-rk"
+
+
+class TestDeriveKeyBuilder:
+    def test_has_correct_operation(self):
+        op, payload = _decode_request(
+            build_derive_key_request("uid-dk", b"\x01\x02", "derived", 128)
+        )
+        assert op == Operation.DeriveKey
+
+    def test_contains_uid(self):
+        op, payload = _decode_request(
+            build_derive_key_request("uid-dk", b"\x01\x02", "derived", 128)
+        )
+        uid = find_child(payload, Tag.UniqueIdentifier)
+        assert uid["value"] == "uid-dk"
+
+    def test_contains_derivation_parameters(self):
+        op, payload = _decode_request(
+            build_derive_key_request("uid-dk", b"\x01\x02", "derived", 128)
+        )
+        params = find_child(payload, Tag.DerivationParameters)
+        assert params is not None
+        dd = find_child(params, Tag.DerivationData)
+        assert dd["value"] == b"\x01\x02"
+
+
+class TestCheckBuilder:
+    def test_has_correct_operation(self):
+        op, payload = _decode_request(build_check_request("uid-chk"))
+        assert op == Operation.Check
+
+
+class TestAttributeBuilders:
+    def test_get_attributes_operation(self):
+        op, payload = _decode_request(build_get_attributes_request("uid-ga"))
+        assert op == Operation.GetAttributes
+
+    def test_get_attribute_list_operation(self):
+        op, payload = _decode_request(build_get_attribute_list_request("uid-gal"))
+        assert op == Operation.GetAttributeList
+
+    def test_add_attribute_operation(self):
+        op, payload = _decode_request(
+            build_add_attribute_request("uid-aa", "Contact", "admin@example.com")
+        )
+        assert op == Operation.AddAttribute
+
+    def test_add_attribute_contains_attr(self):
+        op, payload = _decode_request(
+            build_add_attribute_request("uid-aa", "Contact", "admin@example.com")
+        )
+        attr = find_child(payload, Tag.Attribute)
+        attr_name = find_child(attr, Tag.AttributeName)
+        attr_value = find_child(attr, Tag.AttributeValue)
+        assert attr_name["value"] == "Contact"
+        assert attr_value["value"] == "admin@example.com"
+
+    def test_modify_attribute_operation(self):
+        op, payload = _decode_request(
+            build_modify_attribute_request("uid-ma", "Contact", "new@example.com")
+        )
+        assert op == Operation.ModifyAttribute
+
+    def test_delete_attribute_operation(self):
+        op, payload = _decode_request(
+            build_delete_attribute_request("uid-da", "Contact")
+        )
+        assert op == Operation.DeleteAttribute
+
+    def test_delete_attribute_contains_attr_name(self):
+        op, payload = _decode_request(
+            build_delete_attribute_request("uid-da", "Contact")
+        )
+        attr = find_child(payload, Tag.Attribute)
+        attr_name = find_child(attr, Tag.AttributeName)
+        assert attr_name["value"] == "Contact"
+
+
+class TestObtainLeaseBuilder:
+    def test_has_correct_operation(self):
+        op, payload = _decode_request(build_obtain_lease_request("uid-ol"))
+        assert op == Operation.ObtainLease
+
+
+class TestRevokeBuilder:
+    def test_has_correct_operation(self):
+        op, payload = _decode_request(build_revoke_request("uid-rv", 1))
+        assert op == Operation.Revoke
+
+    def test_contains_revocation_reason(self):
+        op, payload = _decode_request(build_revoke_request("uid-rv", 5))
+        rr = find_child(payload, Tag.RevocationReason)
+        assert rr is not None
+        rrc = find_child(rr, Tag.RevocationReasonCode)
+        assert rrc["value"] == 5
+
+
+class TestArchiveRecoverBuilders:
+    def test_archive_operation(self):
+        op, payload = _decode_request(build_archive_request("uid-ar"))
+        assert op == Operation.Archive
+
+    def test_recover_operation(self):
+        op, payload = _decode_request(build_recover_request("uid-rc"))
+        assert op == Operation.Recover
+
+
+class TestEmptyPayloadBuilders:
+    def test_query_operation(self):
+        op, payload = _decode_request(build_query_request())
+        assert op == Operation.Query
+
+    def test_poll_operation(self):
+        op, payload = _decode_request(build_poll_request())
+        assert op == Operation.Poll
+
+    def test_discover_versions_operation(self):
+        op, payload = _decode_request(build_discover_versions_request())
+        assert op == Operation.DiscoverVersions
+
+
+class TestCryptoBuilders:
+    def test_encrypt_operation(self):
+        op, payload = _decode_request(build_encrypt_request("uid-enc", b"plaintext"))
+        assert op == Operation.Encrypt
+
+    def test_encrypt_contains_data(self):
+        op, payload = _decode_request(build_encrypt_request("uid-enc", b"plaintext"))
+        data = find_child(payload, Tag.Data)
+        assert data["value"] == b"plaintext"
+
+    def test_decrypt_operation(self):
+        op, payload = _decode_request(build_decrypt_request("uid-dec", b"ciphertext"))
+        assert op == Operation.Decrypt
+
+    def test_decrypt_without_nonce(self):
+        op, payload = _decode_request(build_decrypt_request("uid-dec", b"ciphertext"))
+        nonce = find_child(payload, Tag.IVCounterNonce)
+        assert nonce is None
+
+    def test_decrypt_with_nonce(self):
+        op, payload = _decode_request(
+            build_decrypt_request("uid-dec", b"ciphertext", nonce=b"\x01\x02\x03")
+        )
+        nonce = find_child(payload, Tag.IVCounterNonce)
+        assert nonce["value"] == b"\x01\x02\x03"
+
+    def test_sign_operation(self):
+        op, payload = _decode_request(build_sign_request("uid-sign", b"data"))
+        assert op == Operation.Sign
+
+    def test_signature_verify_operation(self):
+        op, payload = _decode_request(
+            build_signature_verify_request("uid-sv", b"data", b"sig")
+        )
+        assert op == Operation.SignatureVerify
+
+    def test_signature_verify_contains_signature_data(self):
+        op, payload = _decode_request(
+            build_signature_verify_request("uid-sv", b"data", b"sig-bytes")
+        )
+        sig = find_child(payload, Tag.SignatureData)
+        assert sig["value"] == b"sig-bytes"
+
+    def test_mac_operation(self):
+        op, payload = _decode_request(build_mac_request("uid-mac", b"data"))
+        assert op == Operation.MAC
+
+
+# ---------------------------------------------------------------------------
 # Response parsing
 # ---------------------------------------------------------------------------
 
@@ -235,14 +562,28 @@ class TestResponseParsing:
         assert result["operation"] == Operation.Locate
         assert result["result_status"] == ResultStatus.Success
 
-    def test_parse_response_throws_on_failure(self):
+    def test_parse_response_throws_kmip_error_on_failure(self):
         batch_extra = [encode_text_string(Tag.ResultMessage, "Item Not Found")]
         response = _build_mock_response(
             Operation.Get, ResultStatus.OperationFailed,
             extra_batch_children=batch_extra,
         )
-        with pytest.raises(RuntimeError, match="Item Not Found"):
+        with pytest.raises(KmipError, match="Item Not Found"):
             parse_response(response)
+
+    def test_kmip_error_has_status_and_reason(self):
+        batch_extra = [
+            encode_text_string(Tag.ResultMessage, "Denied"),
+            encode_enum(Tag.ResultReason, 42),
+        ]
+        response = _build_mock_response(
+            Operation.Get, ResultStatus.OperationFailed,
+            extra_batch_children=batch_extra,
+        )
+        with pytest.raises(KmipError) as exc_info:
+            parse_response(response)
+        assert exc_info.value.result_status == ResultStatus.OperationFailed
+        assert exc_info.value.result_reason == 42
 
     def test_parse_response_throws_on_wrong_tag(self):
         bad_msg = encode_structure(Tag.RequestMessage, [])
@@ -309,6 +650,185 @@ class TestResponseParsing:
 
 
 # ---------------------------------------------------------------------------
+# New payload parsers
+# ---------------------------------------------------------------------------
+
+
+class TestNewPayloadParsers:
+    def test_parse_check_payload(self):
+        payload = decode_ttlv(encode_structure(Tag.ResponsePayload, [
+            encode_text_string(Tag.UniqueIdentifier, "uid-chk"),
+        ]))
+        result = parse_check_payload(payload)
+        assert result["unique_identifier"] == "uid-chk"
+
+    def test_parse_check_payload_none(self):
+        result = parse_check_payload(None)
+        assert result["unique_identifier"] is None
+
+    def test_parse_re_key_payload(self):
+        payload = decode_ttlv(encode_structure(Tag.ResponsePayload, [
+            encode_text_string(Tag.UniqueIdentifier, "uid-rk-new"),
+        ]))
+        result = parse_re_key_payload(payload)
+        assert result["unique_identifier"] == "uid-rk-new"
+
+    def test_parse_re_key_payload_none(self):
+        result = parse_re_key_payload(None)
+        assert result["unique_identifier"] is None
+
+    def test_parse_encrypt_payload(self):
+        payload = decode_ttlv(encode_structure(Tag.ResponsePayload, [
+            encode_byte_string(Tag.Data, b"ciphertext"),
+            encode_byte_string(Tag.IVCounterNonce, b"\xaa\xbb"),
+        ]))
+        result = parse_encrypt_payload(payload)
+        assert result["data"] == b"ciphertext"
+        assert result["nonce"] == b"\xaa\xbb"
+
+    def test_parse_encrypt_payload_no_nonce(self):
+        payload = decode_ttlv(encode_structure(Tag.ResponsePayload, [
+            encode_byte_string(Tag.Data, b"ciphertext"),
+        ]))
+        result = parse_encrypt_payload(payload)
+        assert result["data"] == b"ciphertext"
+        assert result["nonce"] is None
+
+    def test_parse_encrypt_payload_none(self):
+        result = parse_encrypt_payload(None)
+        assert result["data"] is None
+        assert result["nonce"] is None
+
+    def test_parse_decrypt_payload(self):
+        payload = decode_ttlv(encode_structure(Tag.ResponsePayload, [
+            encode_byte_string(Tag.Data, b"plaintext"),
+        ]))
+        result = parse_decrypt_payload(payload)
+        assert result["data"] == b"plaintext"
+
+    def test_parse_decrypt_payload_none(self):
+        result = parse_decrypt_payload(None)
+        assert result["data"] is None
+
+    def test_parse_sign_payload(self):
+        payload = decode_ttlv(encode_structure(Tag.ResponsePayload, [
+            encode_byte_string(Tag.SignatureData, b"sig-bytes"),
+        ]))
+        result = parse_sign_payload(payload)
+        assert result["signature_data"] == b"sig-bytes"
+
+    def test_parse_sign_payload_none(self):
+        result = parse_sign_payload(None)
+        assert result["signature_data"] is None
+
+    def test_parse_signature_verify_payload_valid(self):
+        payload = decode_ttlv(encode_structure(Tag.ResponsePayload, [
+            encode_enum(Tag.ValidityIndicator, 0),  # 0 = valid
+        ]))
+        result = parse_signature_verify_payload(payload)
+        assert result["valid"] is True
+
+    def test_parse_signature_verify_payload_invalid(self):
+        payload = decode_ttlv(encode_structure(Tag.ResponsePayload, [
+            encode_enum(Tag.ValidityIndicator, 1),  # 1 = invalid
+        ]))
+        result = parse_signature_verify_payload(payload)
+        assert result["valid"] is False
+
+    def test_parse_signature_verify_payload_none(self):
+        result = parse_signature_verify_payload(None)
+        assert result["valid"] is False
+
+    def test_parse_mac_payload(self):
+        payload = decode_ttlv(encode_structure(Tag.ResponsePayload, [
+            encode_byte_string(Tag.MACData, b"mac-bytes"),
+        ]))
+        result = parse_mac_payload(payload)
+        assert result["mac_data"] == b"mac-bytes"
+
+    def test_parse_mac_payload_none(self):
+        result = parse_mac_payload(None)
+        assert result["mac_data"] is None
+
+    def test_parse_query_payload(self):
+        payload = decode_ttlv(encode_structure(Tag.ResponsePayload, [
+            encode_enum(Tag.Operation, Operation.Create),
+            encode_enum(Tag.Operation, Operation.Get),
+            encode_enum(Tag.ObjectType, ObjectType.SymmetricKey),
+        ]))
+        result = parse_query_payload(payload)
+        assert result["operations"] == [Operation.Create, Operation.Get]
+        assert result["object_types"] == [ObjectType.SymmetricKey]
+
+    def test_parse_query_payload_empty(self):
+        payload = decode_ttlv(encode_structure(Tag.ResponsePayload, []))
+        result = parse_query_payload(payload)
+        assert result["operations"] == []
+        assert result["object_types"] == []
+
+    def test_parse_query_payload_none(self):
+        result = parse_query_payload(None)
+        assert result["operations"] == []
+        assert result["object_types"] == []
+
+    def test_parse_discover_versions_payload(self):
+        payload = decode_ttlv(encode_structure(Tag.ResponsePayload, [
+            encode_structure(Tag.ProtocolVersion, [
+                encode_integer(Tag.ProtocolVersionMajor, 1),
+                encode_integer(Tag.ProtocolVersionMinor, 4),
+            ]),
+            encode_structure(Tag.ProtocolVersion, [
+                encode_integer(Tag.ProtocolVersionMajor, 1),
+                encode_integer(Tag.ProtocolVersionMinor, 3),
+            ]),
+        ]))
+        result = parse_discover_versions_payload(payload)
+        assert len(result["versions"]) == 2
+        assert result["versions"][0] == {"major": 1, "minor": 4}
+        assert result["versions"][1] == {"major": 1, "minor": 3}
+
+    def test_parse_discover_versions_payload_none(self):
+        result = parse_discover_versions_payload(None)
+        assert result["versions"] == []
+
+    def test_parse_derive_key_payload(self):
+        payload = decode_ttlv(encode_structure(Tag.ResponsePayload, [
+            encode_text_string(Tag.UniqueIdentifier, "uid-derived"),
+        ]))
+        result = parse_derive_key_payload(payload)
+        assert result["unique_identifier"] == "uid-derived"
+
+    def test_parse_derive_key_payload_none(self):
+        result = parse_derive_key_payload(None)
+        assert result["unique_identifier"] is None
+
+    def test_parse_create_key_pair_payload(self):
+        payload = decode_ttlv(encode_structure(Tag.ResponsePayload, [
+            encode_text_string(Tag.PrivateKeyUniqueIdentifier, "priv-uid-1"),
+            encode_text_string(Tag.PublicKeyUniqueIdentifier, "pub-uid-1"),
+        ]))
+        result = parse_create_key_pair_payload(payload)
+        assert result["private_key_uid"] == "priv-uid-1"
+        assert result["public_key_uid"] == "pub-uid-1"
+
+    def test_parse_create_key_pair_payload_none(self):
+        result = parse_create_key_pair_payload(None)
+        assert result["private_key_uid"] is None
+        assert result["public_key_uid"] is None
+
+    def test_parse_obtain_lease_payload(self):
+        payload = decode_ttlv(encode_structure(Tag.ResponsePayload, [
+            encode_integer(Tag.LeaseTime, 3600),
+        ]))
+        result = parse_obtain_lease_payload(payload)
+        assert result["lease_time"] == 3600
+
+    def test_parse_obtain_lease_payload_none(self):
+        result = parse_obtain_lease_payload(None)
+        assert result["lease_time"] == 0
+
+
+# ---------------------------------------------------------------------------
 # Round-trip: build -> encode -> decode -> verify
 # ---------------------------------------------------------------------------
 
@@ -335,3 +855,54 @@ class TestRoundTrip:
         batch = find_child(decoded, Tag.BatchItem)
         op = find_child(batch, Tag.Operation)
         assert op["value"] == Operation.Create
+
+    def test_encrypt_request_round_trip(self):
+        request = build_encrypt_request("uid-rt", b"round-trip-data")
+        decoded = decode_ttlv(request)
+        batch = find_child(decoded, Tag.BatchItem)
+        payload = find_child(batch, Tag.RequestPayload)
+        uid = find_child(payload, Tag.UniqueIdentifier)
+        data = find_child(payload, Tag.Data)
+        assert uid["value"] == "uid-rt"
+        assert data["value"] == b"round-trip-data"
+
+    def test_revoke_request_round_trip(self):
+        request = build_revoke_request("uid-rv-rt", 3)
+        decoded = decode_ttlv(request)
+        batch = find_child(decoded, Tag.BatchItem)
+        op = find_child(batch, Tag.Operation)
+        assert op["value"] == Operation.Revoke
+        payload = find_child(batch, Tag.RequestPayload)
+        rr = find_child(payload, Tag.RevocationReason)
+        rrc = find_child(rr, Tag.RevocationReasonCode)
+        assert rrc["value"] == 3
+
+    def test_all_uid_only_builders_produce_valid_ttlv(self):
+        """All UID-only builders should produce decodable TTLV."""
+        builders = [
+            (build_activate_request, "uid"),
+            (build_destroy_request, "uid"),
+            (build_re_key_request, "uid"),
+            (build_check_request, "uid"),
+            (build_get_attributes_request, "uid"),
+            (build_get_attribute_list_request, "uid"),
+            (build_obtain_lease_request, "uid"),
+            (build_archive_request, "uid"),
+            (build_recover_request, "uid"),
+        ]
+        for builder, arg in builders:
+            request = builder(arg)
+            decoded = decode_ttlv(request)
+            assert decoded["tag"] == Tag.RequestMessage
+
+    def test_all_empty_payload_builders_produce_valid_ttlv(self):
+        """All empty-payload builders should produce decodable TTLV."""
+        builders = [
+            build_query_request,
+            build_poll_request,
+            build_discover_versions_request,
+        ]
+        for builder in builders:
+            request = builder()
+            decoded = decode_ttlv(request)
+            assert decoded["tag"] == Tag.RequestMessage

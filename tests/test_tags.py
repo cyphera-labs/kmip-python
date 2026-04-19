@@ -1,4 +1,4 @@
-"""Tag/enum constant tests — ported from kmip-node."""
+"""Tag/enum constant tests -- full 27-operation set."""
 
 from cyphera_kmip.tags import (
     Tag,
@@ -52,7 +52,7 @@ class TestObjectType:
 
 
 # ---------------------------------------------------------------------------
-# Operation values -- KMIP 1.4 Section 9.1.3.2.2
+# Operation values -- all 27 operations
 # ---------------------------------------------------------------------------
 
 
@@ -60,26 +60,98 @@ class TestOperations:
     def test_create(self):
         assert Operation.Create == 0x00000001
 
+    def test_create_key_pair(self):
+        assert Operation.CreateKeyPair == 0x00000002
+
+    def test_register(self):
+        assert Operation.Register == 0x00000003
+
+    def test_re_key(self):
+        assert Operation.ReKey == 0x00000004
+
+    def test_derive_key(self):
+        assert Operation.DeriveKey == 0x00000005
+
     def test_locate(self):
         assert Operation.Locate == 0x00000008
-
-    def test_get(self):
-        assert Operation.Get == 0x0000000A
-
-    def test_activate(self):
-        assert Operation.Activate == 0x00000012
-
-    def test_destroy(self):
-        assert Operation.Destroy == 0x00000014
 
     def test_check(self):
         assert Operation.Check == 0x00000009
 
+    def test_get(self):
+        assert Operation.Get == 0x0000000A
+
+    def test_get_attributes(self):
+        assert Operation.GetAttributes == 0x0000000B
+
+    def test_get_attribute_list(self):
+        assert Operation.GetAttributeList == 0x0000000C
+
+    def test_add_attribute(self):
+        assert Operation.AddAttribute == 0x0000000D
+
+    def test_modify_attribute(self):
+        assert Operation.ModifyAttribute == 0x0000000E
+
+    def test_delete_attribute(self):
+        assert Operation.DeleteAttribute == 0x0000000F
+
+    def test_obtain_lease(self):
+        assert Operation.ObtainLease == 0x00000010
+
+    def test_activate(self):
+        assert Operation.Activate == 0x00000012
+
+    def test_revoke(self):
+        assert Operation.Revoke == 0x00000013
+
+    def test_destroy(self):
+        assert Operation.Destroy == 0x00000014
+
+    def test_archive(self):
+        assert Operation.Archive == 0x00000015
+
+    def test_recover(self):
+        assert Operation.Recover == 0x00000016
+
+    def test_query(self):
+        assert Operation.Query == 0x00000018
+
+    def test_poll(self):
+        assert Operation.Poll == 0x0000001A
+
+    def test_discover_versions(self):
+        assert Operation.DiscoverVersions == 0x0000001E
+
+    def test_encrypt(self):
+        assert Operation.Encrypt == 0x0000001F
+
+    def test_decrypt(self):
+        assert Operation.Decrypt == 0x00000020
+
+    def test_sign(self):
+        assert Operation.Sign == 0x00000021
+
+    def test_signature_verify(self):
+        assert Operation.SignatureVerify == 0x00000022
+
+    def test_mac(self):
+        assert Operation.MAC == 0x00000023
+
     def test_no_duplicate_values(self):
         values = [
-            Operation.Create, Operation.Locate, Operation.Get,
-            Operation.Activate, Operation.Destroy, Operation.Check,
+            Operation.Create, Operation.CreateKeyPair, Operation.Register,
+            Operation.ReKey, Operation.DeriveKey, Operation.Locate,
+            Operation.Check, Operation.Get, Operation.GetAttributes,
+            Operation.GetAttributeList, Operation.AddAttribute,
+            Operation.ModifyAttribute, Operation.DeleteAttribute,
+            Operation.ObtainLease, Operation.Activate, Operation.Revoke,
+            Operation.Destroy, Operation.Archive, Operation.Recover,
+            Operation.Query, Operation.Poll, Operation.DiscoverVersions,
+            Operation.Encrypt, Operation.Decrypt, Operation.Sign,
+            Operation.SignatureVerify, Operation.MAC,
         ]
+        assert len(values) == 27
         assert len(set(values)) == len(values)
 
 
@@ -275,3 +347,70 @@ class TestTagRange:
         ]
         values = [getattr(Tag, name) for name in tag_attrs]
         assert len(set(values)) == len(values)
+
+
+# ---------------------------------------------------------------------------
+# New tags added for full 27-op support
+# ---------------------------------------------------------------------------
+
+
+class TestNewTags:
+    def test_private_key_unique_identifier(self):
+        assert Tag.PrivateKeyUniqueIdentifier == 0x420066
+
+    def test_public_key_unique_identifier(self):
+        assert Tag.PublicKeyUniqueIdentifier == 0x42006F
+
+    def test_public_key(self):
+        assert Tag.PublicKey == 0x42004E
+
+    def test_private_key(self):
+        assert Tag.PrivateKey == 0x42004D
+
+    def test_certificate(self):
+        assert Tag.Certificate == 0x420021
+
+    def test_certificate_type(self):
+        assert Tag.CertificateType == 0x42001D
+
+    def test_certificate_value(self):
+        assert Tag.CertificateValue == 0x42001E
+
+    def test_data(self):
+        assert Tag.Data == 0x420033
+
+    def test_iv_counter_nonce(self):
+        assert Tag.IVCounterNonce == 0x420047
+
+    def test_signature_data(self):
+        assert Tag.SignatureData == 0x42004F
+
+    def test_mac_data(self):
+        assert Tag.MACData == 0x420051
+
+    def test_validity_indicator(self):
+        assert Tag.ValidityIndicator == 0x420098
+
+    def test_revocation_reason(self):
+        assert Tag.RevocationReason == 0x420082
+
+    def test_revocation_reason_code(self):
+        assert Tag.RevocationReasonCode == 0x420083
+
+    def test_query_function(self):
+        assert Tag.QueryFunction == 0x420074
+
+    def test_state(self):
+        assert Tag.State == 0x42008D
+
+    def test_derivation_method(self):
+        assert Tag.DerivationMethod == 0x420031
+
+    def test_derivation_parameters(self):
+        assert Tag.DerivationParameters == 0x420032
+
+    def test_derivation_data(self):
+        assert Tag.DerivationData == 0x420030
+
+    def test_lease_time(self):
+        assert Tag.LeaseTime == 0x420049
