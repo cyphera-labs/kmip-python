@@ -146,24 +146,43 @@ def decode_ttlv(buf: bytes, offset: int = 0, _depth: int = 0) -> dict:
             child = decode_ttlv(buf, pos, _depth + 1)
             children.append(child)
             pos += child["total_length"]
+            if pos > end:  # Guard against child overrunning structure
+                raise ValueError("TTLV: child overruns structure boundary")
         value = children
     elif type_ == Type.Integer:
+        # M1: Validate fixed-size types
+        if length != 4:
+            raise ValueError(f"TTLV: Integer requires length=4, got {length}")
         value = struct.unpack_from(">i", buf, value_start)[0]
     elif type_ == Type.LongInteger:
+        if length != 8:
+            raise ValueError(f"TTLV: LongInteger requires length=8, got {length}")
         value = struct.unpack_from(">q", buf, value_start)[0]
     elif type_ == Type.Enumeration:
+        if length != 4:
+            raise ValueError(f"TTLV: Enumeration requires length=4, got {length}")
         value = struct.unpack_from(">I", buf, value_start)[0]
     elif type_ == Type.Boolean:
+        if length != 8:
+            raise ValueError(f"TTLV: Boolean requires length=8, got {length}")
         value = struct.unpack_from(">q", buf, value_start)[0] != 0
     elif type_ == Type.TextString:
-        value = buf[value_start:value_start + length].decode("utf-8")
+        # C1: Validate UTF-8 strictly
+        try:
+            value = buf[value_start:value_start + length].decode("utf-8")
+        except UnicodeDecodeError as e:
+            raise ValueError(f"TTLV: invalid UTF-8 in TextString: {e}") from e
     elif type_ == Type.ByteString:
         value = bytes(buf[value_start:value_start + length])
     elif type_ == Type.DateTime:
+        if length != 8:
+            raise ValueError(f"TTLV: DateTime requires length=8, got {length}")
         value = struct.unpack_from(">q", buf, value_start)[0]
     elif type_ == Type.BigInteger:
         value = bytes(buf[value_start:value_start + length])
     elif type_ == Type.Interval:
+        if length != 4:
+            raise ValueError(f"TTLV: Interval requires length=4, got {length}")
         value = struct.unpack_from(">I", buf, value_start)[0]
     else:
         value = bytes(buf[value_start:value_start + length])

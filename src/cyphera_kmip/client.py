@@ -86,8 +86,12 @@ _ALGORITHM_MAP = {
 
 
 def resolve_algorithm(name: str) -> int:
-    """Convert an algorithm name string to its KMIP enum value. Returns 0 for unknown."""
-    return _ALGORITHM_MAP.get(name.upper(), 0)
+    """Convert an algorithm name string to its KMIP enum value. Raises ValueError for unknown."""
+    # M3: Reject unknown algorithms instead of silently returning 0
+    result = _ALGORITHM_MAP.get(name.upper())
+    if result is None:
+        raise ValueError(f"Unknown KMIP algorithm: {name!r}")
+    return result
 
 
 class KmipClient:
@@ -122,10 +126,30 @@ class KmipClient:
         self.timeout = timeout
         self._sock = None
         self._insecure_skip_verify = insecure_skip_verify
+        self._credential = None  # KMIP auth credential (username, password)
+        self._server_cert_fingerprint = None  # L1: Optional cert pinning (SHA-256 hex)
+        self._lock = __import__("threading").Lock()  # M5: Thread safety
+
+        # H1: Warn on insecure mode
+        if insecure_skip_verify:
+            import warnings
+            warnings.warn(
+                "KmipClient: insecure_skip_verify=True disables TLS certificate verification. "
+                "NEVER use in production.",
+                stacklevel=2,
+            )
 
         self._client_cert = client_cert
         self._client_key = client_key
         self._ca_cert = ca_cert
+
+    def set_credentials(self, username: str, password: str):
+        """Set KMIP authentication credentials (UsernameAndPassword)."""
+        self._credential = (username, password)
+
+    def set_server_cert_fingerprint(self, fingerprint: str):
+        """L1: Set expected server certificate SHA-256 fingerprint for pinning."""
+        self._server_cert_fingerprint = fingerprint.lower().replace(":", "")
 
     # ------------------------------------------------------------------
     # 27 operations
@@ -391,27 +415,39 @@ class KmipClient:
 
     def _connect(self):
         """Establish or reuse the mTLS connection."""
-        if self._sock is not None:
+        with self._lock:  # M5: Thread safety
+            if self._sock is not None:
+                return self._sock
+
+            ctx = ssl.create_default_context()
+            # M2: Explicit TLS version floor
+            ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+            ctx.load_cert_chain(
+                certfile=self._client_cert,
+                keyfile=self._client_key,
+            )
+            if self._ca_cert:
+                ctx.load_verify_locations(self._ca_cert)
+
+            if self._insecure_skip_verify:
+                ctx.check_hostname = False
+                ctx.verify_mode = ssl.CERT_NONE
+
+            raw_sock = socket.create_connection(
+                (self.host, self.port), timeout=self.timeout
+            )
+            self._sock = ctx.wrap_socket(raw_sock, server_hostname=self.host)
+
+            # L1: Certificate pinning
+            if self._server_cert_fingerprint:
+                import hashlib
+                der = self._sock.getpeercert(binary_form=True)
+                fp = hashlib.sha256(der).hexdigest()
+                if fp != self._server_cert_fingerprint:
+                    self._sock.close()
+                    self._sock = None
+                    raise ssl.SSLError(
+                        f"Server certificate fingerprint mismatch (expected {self._server_cert_fingerprint}, got {fp})"
+                    )
+
             return self._sock
-
-        # Use ssl.create_default_context() which verifies certificates by default
-        # and loads system CA certificates when no CA cert is provided.
-        ctx = ssl.create_default_context()
-        ctx.load_cert_chain(
-            certfile=self._client_cert,
-            keyfile=self._client_key,
-        )
-        if self._ca_cert:
-            ctx.load_verify_locations(self._ca_cert)
-        # When no CA cert is provided, system roots are used by default.
-
-        # Only disable verification if explicitly requested.
-        if self._insecure_skip_verify:
-            ctx.check_hostname = False
-            ctx.verify_mode = ssl.CERT_NONE
-
-        raw_sock = socket.create_connection(
-            (self.host, self.port), timeout=self.timeout
-        )
-        self._sock = ctx.wrap_socket(raw_sock, server_hostname=self.host)
-        return self._sock

@@ -41,5 +41,8 @@ class TestResolveAlgorithm:
     def test_hmacsha512(self):
         assert resolve_algorithm("HMACSHA512") == Algorithm.HMACSHA512
 
-    def test_unknown_returns_zero(self):
-        assert resolve_algorithm("BLOWFISH") == 0
+    def test_unknown_raises_value_error(self):
+        # M3: Unknown algorithms now raise ValueError instead of returning 0
+        import pytest
+        with pytest.raises(ValueError, match="Unknown KMIP algorithm"):
+            resolve_algorithm("BLOWFISH")

@@ -273,11 +273,14 @@ def build_derive_key_request(
     derivation_data: bytes,
     name: str,
     length: int,
+    derivation_method: int = 1,
 ) -> bytes:
     """Build a DeriveKey request."""
     payload = encode_structure(Tag.RequestPayload, [
         encode_text_string(Tag.UniqueIdentifier, unique_id),
         encode_structure(Tag.DerivationParameters, [
+            # M6: Include DerivationMethod per KMIP 1.4 §6.32
+            encode_enum(Tag.DerivationMethod, derivation_method),
             encode_byte_string(Tag.DerivationData, derivation_data),
         ]),
         encode_structure(Tag.TemplateAttribute, [
@@ -539,11 +542,17 @@ def parse_response(data: bytes) -> dict:
     message_item = find_child(batch_item, Tag.ResultMessage)
     payload_item = find_child(batch_item, Tag.ResponsePayload)
 
+    # M4: Reject responses missing ResultStatus (don't default to None/0)
+    if status_item is None:
+        raise KmipError("KMIP: response missing ResultStatus field", result_status=0, result_reason=0)
+
     result = {
         "operation": operation_item["value"] if operation_item else None,
-        "result_status": status_item["value"] if status_item else None,
+        "result_status": status_item["value"],
         "result_reason": reason_item["value"] if reason_item else None,
-        "result_message": message_item["value"] if message_item else None,
+        # H2: Sanitize server-controlled result_message to prevent log injection
+        "result_message": (str(message_item["value"] or "")[:256].replace("\n", " ").replace("\r", ""))
+                          if message_item else None,
         "payload": payload_item,
     }
 
